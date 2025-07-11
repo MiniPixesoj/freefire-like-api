@@ -80,7 +80,7 @@ async def like_player():
                 "message": "Valid numeric UID required",
                 "status": 400,
                 "credits": "https://t.me/nopethug"
-            }), 400
+            })
 
         region, player_info = await detect_player_region(uid)
         if not player_info:
@@ -89,7 +89,7 @@ async def like_player():
                 "message": "Player not found on any server",
                 "status": 404,
                 "credits": "https://t.me/nopethug"
-            }), 404
+            })
 
         before_likes = player_info.AccountInfo.Likes
         player_name = player_info.AccountInfo.PlayerNickname
@@ -123,7 +123,7 @@ async def like_player():
             "message": str(e),
             "status": 500,
             "credits": "https://t.me/nopethug"
-        }), 500
+        })
 
 @like_bp.route("/health-check", methods=["GET"])
 def health_check():
