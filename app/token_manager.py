@@ -5,6 +5,7 @@ import threading
 import time
 import logging
 import requests
+import redis
 from cachetools import TTLCache
 from datetime import timedelta
 
@@ -13,6 +14,12 @@ logger = logging.getLogger(__name__)
 AUTH_URL = os.getenv("AUTH_URL", "https://jwtxthug.up.railway.app/token") 
 CACHE_DURATION = timedelta(hours=7).seconds
 TOKEN_REFRESH_THRESHOLD = timedelta(hours=6).seconds
+
+# Configurar Redis (Upstash)
+redis_client = redis.Redis.from_url(
+    os.getenv("REDIS_URL", "rediss://default:AV06AAIjcDFkNzE5MTUxNzM0ZTM0YmQ1OTIyN2M0ZjU5ZjBiNzVhZXAxMA@quick-doe-23866.upstash.io:6379"),
+    decode_responses=True
+)
 
 class TokenCache:
     def __init__(self, servers_config):
@@ -25,10 +32,16 @@ class TokenCache:
     def get_tokens(self, server_key):
         with self.lock:
             now = time.time()
+
+            redis_key = f"tokens:{server_key}"
+            cached_tokens = redis_client.get(redis_key)
+            if cached_tokens:
+                return json.loads(cached_tokens)
+
             refresh_needed = (
-                    server_key not in self.cache or
-                    server_key not in self.last_refresh or
-                    (now - self.last_refresh.get(server_key, 0)) > TOKEN_REFRESH_THRESHOLD
+                server_key not in self.cache or
+                server_key not in self.last_refresh or
+                (now - self.last_refresh.get(server_key, 0)) > TOKEN_REFRESH_THRESHOLD
             )
 
             if refresh_needed:
@@ -58,15 +71,17 @@ class TokenCache:
 
             if tokens:
                 self.cache[server_key] = tokens
+                redis_client.setex(f"tokens:{server_key}", CACHE_DURATION, json.dumps(tokens))
                 logger.info(f"Refreshed tokens for {server_key}. Count: {len(tokens)}")
             else:
-                logger.warning(f"No valid tokens retrieved for {server_key}. Clearing cache for this server.")
                 self.cache[server_key] = []
+                redis_client.setex(f"tokens:{server_key}", CACHE_DURATION, json.dumps([]))
+                logger.warning(f"No valid tokens retrieved for {server_key}. Cache cleared.")
 
         except Exception as e:
             logger.error(f"Critical error during token refresh for {server_key}: {str(e)}")
-            if server_key not in self.cache:
-                self.cache[server_key] = []
+            self.cache[server_key] = []
+            redis_client.setex(f"tokens:{server_key}", CACHE_DURATION, json.dumps([]))
 
     def _load_credentials(self, server_key):
         try:
@@ -74,7 +89,6 @@ class TokenCache:
             if config_data:
                 return json.loads(config_data)
 
-          
             config_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'config', f'{server_key.lower()}_config.json')
             if os.path.exists(config_path):
                 with open(config_path, 'r') as f:
