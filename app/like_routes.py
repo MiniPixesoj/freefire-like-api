@@ -93,7 +93,7 @@ async def send_likes(uid: str, region: str, target_likes: int = None):
                 "Authorization": token
             }
             try:
-                async with session.post(like_url, data=payload, headers=headers, timeout=10) as response:
+                async with session.post(like_url, data=payload, headers=headers, timeout=8) as response:
                     sent += 1
                     if response.status == 200:
                         added += 1
@@ -106,18 +106,15 @@ async def send_likes(uid: str, region: str, target_likes: int = None):
             tasks = [try_like(token) for token in tokens]
             await asyncio.gather(*tasks)
         else:
-            token_index = 0
-            while added < target_likes and token_index < len(tokens):
-                token = tokens[token_index]
+            remaining_tokens = list(tokens)
+            while added < target_likes and remaining_tokens:
+                token = remaining_tokens.pop(0)
                 if token in used_tokens:
-                    token_index += 1
                     continue
-
                 success = await try_like(token)
                 used_tokens.add(token)
-
                 if not success:
-                    token_index += 1
+                    continue  # sigue intentando con otros
 
     return {
         'sent': sent,
@@ -130,6 +127,7 @@ async def like_player():
         uid = request.args.get("uid")
         region = request.args.get("region")
         amount = request.args.get("amount")
+        target_likes = int(amount) if amount and amount.isdigit() else None
         if not uid or not uid.isdigit():
             return jsonify({
                 "status": 400,
@@ -149,7 +147,7 @@ async def like_player():
         player_name = player_info.AccountInfo.PlayerNickname
         info_url = f"{_SERVERS[region]}/GetPlayerPersonalShow" 
 
-        await send_likes(uid, region, int(amount) if amount and amount.isdigit() else None)
+        await send_likes(uid, region, target_likes)
 
         current_tokens = _token_cache.get_tokens(region) 
         if not current_tokens:
