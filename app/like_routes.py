@@ -149,7 +149,7 @@ async def like_player():
         player_name = player_info.AccountInfo.PlayerNickname
         info_url = f"{_SERVERS[region]}/GetPlayerPersonalShow" 
 
-        await send_likes(uid, region, amount)
+        await send_likes(uid, region, int(amount) if amount and amount.isdigit() else None)
 
         current_tokens = _token_cache.get_tokens(region) 
         if not current_tokens:
