@@ -86,11 +86,13 @@ async def send_likes(uid: str, region: str, amount: int = None):
     used_tokens = set()
 
     if amount is None:
+        print("[INFO] Modo sin límite de likes, usando todos los tokens.")
         tasks = [async_post_request(like_url, payload, token) for token in tokens]
         results = await asyncio.gather(*tasks)
         added = sum(1 for r in results if r)
         sent = len(results)
     else:
+        print(f"[INFO] Modo limitado: intentando agregar {amount} likes...")
         for token in tokens:
             if added >= amount:
                 break
@@ -98,17 +100,25 @@ async def send_likes(uid: str, region: str, amount: int = None):
                 continue
 
             used_tokens.add(token)
+            print(f"[TRY] Enviando like con token: {token[:20]}...")
+
             success = await async_post_request(like_url, payload, token)
             sent += 1
 
             if success:
                 added += 1
+                print(f"[OK] Like agregado. Total: {added}/{amount}")
+            else:
+                print(f"[FAIL] Token fallido. Likes actuales: {added}/{amount}")
 
+        if added < amount:
+            print(f"[WARN] Solo se pudieron agregar {added} likes de {amount} con los tokens disponibles.")
+
+    print(f"[DONE] Likes enviados: {sent}, Likes agregados: {added}")
     return {
         'sent': sent,
         'added': added
     }
-
 @like_bp.route("/like", methods=["GET"])
 async def like_player():
     try:
