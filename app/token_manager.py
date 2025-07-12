@@ -23,8 +23,6 @@ redis_client = redis.Redis.from_url(
 
 class TokenCache:
     def __init__(self, servers_config):
-        self.cache = TTLCache(maxsize=100, ttl=CACHE_DURATION)
-        self.last_refresh = {}
         self.lock = threading.Lock()
         self.session = requests.Session()
         self.servers_config = servers_config
@@ -32,65 +30,58 @@ class TokenCache:
     def get_tokens(self, server_key):
         with self.lock:
             now = time.time()
-
-            redis_key = f"tokens:{server_key}"
-            cached_tokens = redis_client.get(redis_key)
-            if cached_tokens:
-                return json.loads(cached_tokens)
-
-            refresh_needed = (
-                server_key not in self.cache or
-                server_key not in self.last_refresh or
-                (now - self.last_refresh.get(server_key, 0)) > TOKEN_REFRESH_THRESHOLD
-            )
-
-            if refresh_needed:
-                self._refresh_tokens(server_key)
-                self.last_refresh[server_key] = now
-
-            return self.cache.get(server_key, [])
-
-    def _refresh_tokens(self, server_key):
-        try:
             creds = self._load_credentials(server_key)
-            tokens = []
+            valid_tokens = []
 
             for user in creds:
-                params = {'uid': user['uid'], 'password': user['password']}
-                token = None
+                uid = user["uid"]
+                redis_key = f"tokens:{server_key}:{uid}"
+                entry = redis_client.get(redis_key)
 
-                for attempt in range(3):  # Hasta 3 intentos
+                if entry:
                     try:
-                        response = self.session.get(AUTH_URL, params=params, timeout=10)
-                        if response.status_code == 200:
-                            token = response.json().get("token")
-                            if token:
-                                tokens.append(token)
-                                logger.info(f"✅ Token agregado para {user['uid']} (server {server_key}) en intento {attempt + 1}")
-                            else:
-                                logger.warning(f"⚠️ Respuesta sin token para {user['uid']} (server {server_key})")
-                            break
-                        else:
-                            logger.warning(f"⛔ Falló obtención de token para {user['uid']} (server {server_key}): HTTP {response.status_code}, Body: {response.text}")
-                            break
-                    except requests.exceptions.ReadTimeout:
-                        logger.warning(f"⏱ Timeout al intentar token para {user['uid']} (server {server_key}), intento {attempt + 1}")
+                        data = json.loads(entry)
+                        age = now - data.get("timestamp", 0)
+                        if age < CACHE_DURATION:
+                            valid_tokens.append(data["token"])
+                            continue  # Token aún válido, lo usamos
                     except Exception as e:
-                        logger.error(f"❌ Error en intento {attempt + 1} para {user['uid']} (server {server_key}): {str(e)}")
+                        logger.warning(f"Error parseando token de Redis para {uid}: {str(e)}")
 
-            if tokens:
-                self.cache[server_key] = tokens
-                redis_client.setex(f"tokens:{server_key}", CACHE_DURATION, json.dumps(tokens))
-                logger.info(f"🔄 Refrescado tokens para {server_key}. Total: {len(tokens)}")
-            else:
-                self.cache[server_key] = []
-                redis_client.setex(f"tokens:{server_key}", CACHE_DURATION, json.dumps([]))
-                logger.warning(f"⚠️ No se obtuvieron tokens válidos para {server_key}. Cache vacía.")
+                # Si no hay token o está vencido
+                token = self._get_new_token(user)
+                if token:
+                    valid_tokens.append(token)
+                    redis_client.set(redis_key, json.dumps({
+                        "token": token,
+                        "timestamp": now
+                    }))
 
-        except Exception as e:
-            logger.error(f"🔥 Error crítico durante la actualización de tokens para {server_key}: {str(e)}")
-            self.cache[server_key] = []
-            redis_client.setex(f"tokens:{server_key}", CACHE_DURATION, json.dumps([]))
+            return valid_tokens
+
+    def _get_new_token(self, user):
+        for attempt in range(3):
+            try:
+                response = self.session.get(AUTH_URL, params={
+                    'uid': user['uid'], 'password': user['password']
+                }, timeout=10)
+
+                if response.status_code == 200:
+                    token = response.json().get("token")
+                    if token:
+                        logger.info(f"✅ Nuevo token para UID {user['uid']}")
+                        return token
+                    else:
+                        logger.warning(f"⚠️ Token vacío para UID {user['uid']}")
+                        break
+                else:
+                    logger.warning(f"⛔ Error {response.status_code} al obtener token para UID {user['uid']}")
+                    break
+            except requests.exceptions.ReadTimeout:
+                logger.warning(f"⏱ Timeout al obtener token para UID {user['uid']}, intento {attempt+1}")
+            except Exception as e:
+                logger.error(f"❌ Error al obtener token para UID {user['uid']}: {str(e)}")
+        return None
 
     def _load_credentials(self, server_key):
         try:
