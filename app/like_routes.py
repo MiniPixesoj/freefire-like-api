@@ -79,56 +79,13 @@ async def send_likes(uid: str, region: str):
     tokens = _token_cache.get_tokens(region)
     like_url = f"{_SERVERS[region]}/LikeProfile"
     encrypted = encrypt_aes(create_protobuf(uid, region))
-    payload = bytes.fromhex(encrypted)
 
-    batch_size = 30
-    results = []
-    like_counter = 0
-
-    # Usamos una cola para comunicación segura entre tareas
-    counter_queue = asyncio.Queue()
-
-    async with aiohttp.ClientSession() as session:
-        async def limited_request(token: str):
-            nonlocal like_counter
-            headers = {
-                "Content-Type": "application/octet-stream",
-                "Authorization": token
-            }
-            try:
-                async with session.post(like_url, data=payload, headers=headers, timeout=10) as response:
-                    if response.status == 200:
-                        await counter_queue.put(1)  # like exitoso
-                        return await response.read()
-            except Exception as e:
-                logger.warning(f"Error con token {token}: {e}")
-            return None
-
-        async def consume_counter():
-            nonlocal like_counter
-            while True:
-                val = await counter_queue.get()
-                if val is None:
-                    break
-                like_counter += val
-                print(f"Likes agregados hasta ahora: {like_counter}")
-
-        # Inicia el consumidor de contador
-        consumer_task = asyncio.create_task(consume_counter())
-
-        for i in range(0, len(tokens), batch_size):
-            batch = tokens[i:i + batch_size]
-            tasks = [limited_request(token) for token in batch]
-            batch_results = await asyncio.gather(*tasks)
-            results.extend(batch_results)
-
-        # Finaliza el consumidor
-        await counter_queue.put(None)
-        await consumer_task
+    tasks = [async_post_request(like_url, bytes.fromhex(encrypted), token) for token in tokens]
+    results = await asyncio.gather(*tasks)
 
     return {
         'sent': len(results),
-        'added': like_counter
+        'added': sum(1 for r in results if r is not None)
     }
 
 @like_bp.route("/like", methods=["GET"])
