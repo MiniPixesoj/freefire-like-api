@@ -9,3 +9,4 @@ cachetools
 waitress
 python-dotenv
 gunicorn
+redis
