@@ -75,35 +75,53 @@ async def detect_player_region(uid: str, region: str = None):
                     return region_key, player_info
         return None, None
         
-async def send_likes(uid: str, region: str):
+async def send_likes(uid: str, region: str, target_likes: int = None):
     tokens = _token_cache.get_tokens(region)
     like_url = f"{_SERVERS[region]}/LikeProfile"
     encrypted = encrypt_aes(create_protobuf(uid, region))
     payload = bytes.fromhex(encrypted)
 
-    semaphore = asyncio.Semaphore(50)
+    added = 0
+    sent = 0
+    used_tokens = set()
 
     async with aiohttp.ClientSession() as session:
-        async def limited_request(token: str):
-            async with semaphore:
-                headers = {
-                    "Content-Type": "application/octet-stream",
-                    "Authorization": token
-                }
-                try:
-                    async with session.post(like_url, data=payload, headers=headers, timeout=10) as response:
-                        if response.status == 200:
-                            return await response.read()
-                except Exception as e:
-                    print(f"Error con token {token}: {e}")
-                return None
+        async def try_like(token: str):
+            nonlocal added, sent
+            headers = {
+                "Content-Type": "application/octet-stream",
+                "Authorization": token
+            }
+            try:
+                async with session.post(like_url, data=payload, headers=headers, timeout=10) as response:
+                    sent += 1
+                    if response.status == 200:
+                        added += 1
+                        return True
+            except Exception as e:
+                logger.warning(f"Error con token {token}: {e}")
+            return False
 
-        tasks = [limited_request(token) for token in tokens]
-        results = await asyncio.gather(*tasks)
+        if target_likes is None:
+            tasks = [try_like(token) for token in tokens]
+            await asyncio.gather(*tasks)
+        else:
+            token_index = 0
+            while added < target_likes and token_index < len(tokens):
+                token = tokens[token_index]
+                if token in used_tokens:
+                    token_index += 1
+                    continue
+
+                success = await try_like(token)
+                used_tokens.add(token)
+
+                if not success:
+                    token_index += 1
 
     return {
-        'sent': len(results),
-        'added': sum(1 for r in results if r is not None)
+        'sent': sent,
+        'added': added
     }
 
 @like_bp.route("/like", methods=["GET"])
@@ -111,6 +129,7 @@ async def like_player():
     try:
         uid = request.args.get("uid")
         region = request.args.get("region")
+        amount = request.args.get("amount")
         if not uid or not uid.isdigit():
             return jsonify({
                 "status": 400,
@@ -130,7 +149,7 @@ async def like_player():
         player_name = player_info.AccountInfo.PlayerNickname
         info_url = f"{_SERVERS[region]}/GetPlayerPersonalShow" 
 
-        await send_likes(uid, region)
+        await send_likes(uid, region, amount)
 
         current_tokens = _token_cache.get_tokens(region) 
         if not current_tokens:
