@@ -4,7 +4,8 @@ import asyncio
 from datetime import datetime, timezone
 import logging
 import aiohttp 
-import requests 
+import requests
+from typing import List
 
 
 from .utils.protobuf_utils import encode_uid, decode_info, create_protobuf 
@@ -74,12 +75,24 @@ async def detect_player_region(uid: str, region: str = None):
                     return region_key, player_info
         return None, None
 
-async def send_likes(uid: str, region: str):
-    tokens = _token_cache.get_tokens(region) # Utilisez _token_cache
-    like_url = f"{_SERVERS[region]}/LikeProfile" # Utilisez _SERVERS
-    encrypted = encrypt_aes(create_protobuf(uid, region))
+CONCURRENCY_LIMIT = 20
 
-    tasks = [async_post_request(like_url, bytes.fromhex(encrypted), token) for token in tokens]
+async def limited_post_request(semaphore: asyncio.Semaphore, url: str, data: bytes, token: str):
+    async with semaphore:
+        return await async_post_request(url, data, token)
+        
+async def send_likes(uid: str, region: str):
+    tokens = _token_cache.get_tokens(region)
+    like_url = f"{_SERVERS[region]}/LikeProfile"
+    encrypted = encrypt_aes(create_protobuf(uid, region))
+    payload = bytes.fromhex(encrypted)
+
+    semaphore = asyncio.Semaphore(CONCURRENCY_LIMIT)
+    
+    tasks = [
+        limited_post_request(semaphore, like_url, payload, token)
+        for token in tokens
+    ]
     results = await asyncio.gather(*tasks)
 
     return {
