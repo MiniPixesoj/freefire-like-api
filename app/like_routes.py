@@ -75,50 +75,22 @@ async def detect_player_region(uid: str, region: str = None):
                     return region_key, player_info
         return None, None
         
-async def send_likes(uid: str, region: str, target_likes: int = None):
+async def send_likes(uid: str, region: str, amount: int = None):
     tokens = _token_cache.get_tokens(region)
     like_url = f"{_SERVERS[region]}/LikeProfile"
     encrypted = encrypt_aes(create_protobuf(uid, region))
     payload = bytes.fromhex(encrypted)
 
-    added = 0
-    sent = 0
-    used_tokens = set()
+    # Limitar tokens si se especificó un amount
+    if amount is not None:
+        tokens = tokens[:amount]
 
-    async with aiohttp.ClientSession() as session:
-        async def try_like(token: str):
-            nonlocal added, sent
-            headers = {
-                "Content-Type": "application/octet-stream",
-                "Authorization": token
-            }
-            try:
-                async with session.post(like_url, data=payload, headers=headers, timeout=8) as response:
-                    sent += 1
-                    if response.status == 200:
-                        added += 1
-                        return True
-            except Exception as e:
-                logger.warning(f"Error con token {token}: {e}")
-            return False
-
-        if target_likes is None:
-            tasks = [try_like(token) for token in tokens]
-            await asyncio.gather(*tasks)
-        else:
-            remaining_tokens = list(tokens)
-            while added < target_likes and remaining_tokens:
-                token = remaining_tokens.pop(0)
-                if token in used_tokens:
-                    continue
-                success = await try_like(token)
-                used_tokens.add(token)
-                if not success:
-                    continue  # sigue intentando con otros
+    tasks = [async_post_request(like_url, payload, token) for token in tokens]
+    results = await asyncio.gather(*tasks)
 
     return {
-        'sent': sent,
-        'added': added
+        'sent': len(results),
+        'added': sum(1 for r in results if r is not None)
     }
 
 @like_bp.route("/like", methods=["GET"])
