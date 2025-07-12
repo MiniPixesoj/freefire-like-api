@@ -81,16 +81,24 @@ async def send_likes(uid: str, region: str, amount: int = None):
     encrypted = encrypt_aes(create_protobuf(uid, region))
     payload = bytes.fromhex(encrypted)
 
-    # Limitar tokens si se especificó un amount
-    if amount is not None:
-        tokens = tokens[:amount]
+    added = 0
+    sent = 0
+    token_index = 0
+    max_likes = amount if amount is not None else len(tokens)
 
-    tasks = [async_post_request(like_url, payload, token) for token in tokens]
-    results = await asyncio.gather(*tasks)
+    while added < max_likes and token_index < len(tokens):
+        token = tokens[token_index]
+        token_index += 1
+
+        success = await async_post_request(like_url, payload, token)
+        sent += 1
+
+        if success:
+            added += 1
 
     return {
-        'sent': len(results),
-        'added': sum(1 for r in results if r is not None)
+        'sent': sent,
+        'added': added
     }
 
 @like_bp.route("/like", methods=["GET"])
