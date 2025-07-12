@@ -111,7 +111,6 @@ async def send_likes(uid: str, region: str, amount: int = None):
             try:
                 await async_post_request(like_url, payload, token)
                 sent += 1
-                await asyncio.sleep(1)
 
                 current_tokens = _token_cache.get_tokens(region)
                 if not current_tokens:
