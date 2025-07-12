@@ -74,12 +74,6 @@ async def detect_player_region(uid: str, region: str = None):
                 if player_info and player_info.AccountInfo.PlayerNickname:
                     return region_key, player_info
         return None, None
-
-CONCURRENCY_LIMIT = 20
-
-async def limited_post_request(semaphore: asyncio.Semaphore, url: str, data: bytes, token: str):
-    async with semaphore:
-        return await async_post_request(url, data, token)
         
 async def send_likes(uid: str, region: str):
     tokens = _token_cache.get_tokens(region)
@@ -87,13 +81,25 @@ async def send_likes(uid: str, region: str):
     encrypted = encrypt_aes(create_protobuf(uid, region))
     payload = bytes.fromhex(encrypted)
 
-    semaphore = asyncio.Semaphore(CONCURRENCY_LIMIT)
-    
-    tasks = [
-        limited_post_request(semaphore, like_url, payload, token)
-        for token in tokens
-    ]
-    results = await asyncio.gather(*tasks)
+    semaphore = asyncio.Semaphore(30)  # Aumenta a 30 o 50 para más velocidad
+
+    async with aiohttp.ClientSession() as session:
+        async def limited_request(token: str):
+            async with semaphore:
+                headers = {
+                    "Content-Type": "application/octet-stream",
+                    "Authorization": token
+                }
+                try:
+                    async with session.post(like_url, data=payload, headers=headers, timeout=10) as response:
+                        if response.status == 200:
+                            return await response.read()
+                except Exception as e:
+                    print(f"Error con token {token}: {e}")
+                return None
+
+        tasks = [limited_request(token) for token in tokens]
+        results = await asyncio.gather(*tasks)
 
     return {
         'sent': len(results),
@@ -107,19 +113,17 @@ async def like_player():
         region = request.args.get("region")
         if not uid or not uid.isdigit():
             return jsonify({
-                "error": "Invalid UID",
-                "message": "Valid numeric UID required",
                 "status": 400,
-                "credits": "https://t.me/nopethug"
+                "error": "Invalid UID",
+                "message": "Valid numeric UID required"
             })
 
         region, player_info = await detect_player_region(uid, region)
         if not player_info:
             return jsonify({
-                "error": "Player not found",
-                "message": "Player not found on any server",
                 "status": 404,
-                "credits": "https://t.me/nopethug"
+                "error": "Player not found",
+                "message": "Player not found on any server"
             })
 
         before_likes = player_info.AccountInfo.Likes
@@ -137,23 +141,21 @@ async def like_player():
             after_likes = new_info.AccountInfo.Likes if new_info else before_likes
 
         return jsonify({
-            "player": player_name,
+            "status": 1 if after_likes > before_likes else 2,
             "uid": uid,
+            "player": player_name,
             "likes_added": after_likes - before_likes,
             "likes_before": before_likes,
             "likes_after": after_likes,
-            "server_used": region,
-            "status": 1 if after_likes > before_likes else 2,
-            "credits": "https://t.me/nopethug"
+            "server_used": region
         })
 
     except Exception as e:
         logger.error(f"Like error for UID {uid}: {str(e)}", exc_info=True)
         return jsonify({
+            "status": 500,
             "error": "Internal server error",
             "message": str(e),
-            "status": 500,
-            "credits": "https://t.me/nopethug"
         })
 
 @like_bp.route("/health-check", methods=["GET"])
@@ -168,15 +170,13 @@ def health_check():
             "status": "healthy" if all(token_status.values()) else "degraded",
             "servers": token_status,
             "timestamp": datetime.now(timezone.utc).isoformat(),
-            "credits": "https://t.me/nopethug"
         })
     except Exception as e:
         logger.error(f"Health check failed: {str(e)}")
         return jsonify({
             "status": "unhealthy",
             "error": str(e),
-            "credits": "https://t.me/nopethug"
-        }), 500
+        })
 
 @like_bp.route("/", methods=["GET"]) 
 async def root_home():
@@ -185,7 +185,6 @@ async def root_home():
     """
     return jsonify({
         "message": "Api free fire like ",
-        "credits": "https://t.me/nopethug",
     })
 
 def initialize_routes(app_instance, servers_config, token_cache_instance):
