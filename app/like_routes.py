@@ -245,5 +245,5 @@ def get_first_token():
     return jsonify({
         "status": 1,
         "region": region.upper(),
-        "first_token": tokens[0]
+        "token": tokens[0]
     })
