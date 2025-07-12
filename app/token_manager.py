@@ -8,6 +8,7 @@ import requests
 import redis
 from cachetools import TTLCache
 from datetime import timedelta
+from concurrent.futures import ThreadPoolExecutor
 
 logger = logging.getLogger(__name__)
 
@@ -27,36 +28,36 @@ class TokenCache:
         self.session = requests.Session()
         self.servers_config = servers_config
 
+    
     def get_tokens(self, server_key):
         with self.lock:
             now = time.time()
             creds = self._load_credentials(server_key)
             valid_tokens = []
 
-            for user in creds:
+            def process_user(user):
                 uid = user["uid"]
                 redis_key = f"tokens:{server_key}:{uid}"
                 entry = redis_client.get(redis_key)
-
                 if entry:
                     try:
                         data = json.loads(entry)
-                        age = now - data.get("timestamp", 0)
-                        if age < CACHE_DURATION:
-                            valid_tokens.append(data["token"])
-                            continue  # Token aún válido, lo usamos
-                    except Exception as e:
-                        logger.warning(f"Error parseando token de Redis para {uid}: {str(e)}")
-
-                # Si no hay token o está vencido
+                        if now - data.get("timestamp", 0) < CACHE_DURATION:
+                            return data["token"]
+                    except Exception:
+                        pass
                 token = self._get_new_token(user)
                 if token:
-                    valid_tokens.append(token)
                     redis_client.set(redis_key, json.dumps({
                         "token": token,
                         "timestamp": now
                     }))
+                return token
 
+            with ThreadPoolExecutor(max_workers=10) as executor:
+                results = executor.map(process_user, creds)
+
+            valid_tokens = [token for token in results if token]
             return valid_tokens
 
     def _get_new_token(self, user):
