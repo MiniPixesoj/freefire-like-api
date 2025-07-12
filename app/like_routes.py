@@ -43,19 +43,36 @@ def make_request(uid_enc: str, url: str, token: str):
         logger.error(f"Request error: {str(e)}")
         return None
 
-async def detect_player_region(uid: str):
-    for region_key, server_url in _SERVERS.items(): # Utilisez _SERVERS
-        tokens = _token_cache.get_tokens(region_key) # Utilisez _token_cache
+async def detect_player_region(uid: str, region: str = None):
+    if region:
+        server_url = _SERVERS.get(region.upper())
+        if not server_url:
+            return None, None
+
+        tokens = _token_cache.get_tokens(region.upper())
         if not tokens:
-            continue
+            return None, None
 
         info_url = f"{server_url}/GetPlayerPersonalShow"
         response = await async_post_request(info_url, bytes.fromhex(encode_uid(uid)), tokens[0])
         if response:
             player_info = decode_info(response)
             if player_info and player_info.AccountInfo.PlayerNickname:
-                return region_key, player_info
-    return None, None
+                return region.upper(), player_info
+        return None, None
+    else:
+        for region_key, server_url in _SERVERS.items():
+            tokens = _token_cache.get_tokens(region_key)
+            if not tokens:
+                continue
+
+            info_url = f"{server_url}/GetPlayerPersonalShow"
+            response = await async_post_request(info_url, bytes.fromhex(encode_uid(uid)), tokens[0])
+            if response:
+                player_info = decode_info(response)
+                if player_info and player_info.AccountInfo.PlayerNickname:
+                    return region_key, player_info
+        return None, None
 
 async def send_likes(uid: str, region: str):
     tokens = _token_cache.get_tokens(region) # Utilisez _token_cache
@@ -74,6 +91,7 @@ async def send_likes(uid: str, region: str):
 async def like_player():
     try:
         uid = request.args.get("uid")
+        region = request.args.get("region")
         if not uid or not uid.isdigit():
             return jsonify({
                 "error": "Invalid UID",
@@ -82,7 +100,7 @@ async def like_player():
                 "credits": "https://t.me/nopethug"
             })
 
-        region, player_info = await detect_player_region(uid)
+        region, player_info = await detect_player_region(uid, region)
         if not player_info:
             return jsonify({
                 "error": "Player not found",
