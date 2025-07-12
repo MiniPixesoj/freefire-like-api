@@ -225,3 +225,25 @@ def initialize_routes(app_instance, servers_config, token_cache_instance):
     _SERVERS = servers_config
     _token_cache = token_cache_instance
     app_instance.register_blueprint(like_bp)
+
+@like_bp.route("/get-token", methods=["GET"])
+def get_first_token():
+    region = request.args.get("region")
+    if not region:
+        return jsonify({
+            "status": 400,
+            "error": "Missing region parameter"
+        })
+
+    tokens = _token_cache.get_tokens(region.upper())
+    if not tokens:
+        return jsonify({
+            "status": 404,
+            "error": "No tokens available for the specified region"
+        })
+
+    return jsonify({
+        "status": 1,
+        "region": region.upper(),
+        "first_token": tokens[0]
+    })
