@@ -79,9 +79,27 @@ async def send_likes(uid: str, region: str):
     tokens = _token_cache.get_tokens(region)
     like_url = f"{_SERVERS[region]}/LikeProfile"
     encrypted = encrypt_aes(create_protobuf(uid, region))
+    payload = bytes.fromhex(encrypted)
 
-    tasks = [async_post_request(like_url, bytes.fromhex(encrypted), token) for token in tokens]
-    results = await asyncio.gather(*tasks)
+    semaphore = asyncio.Semaphore(50)
+
+    async with aiohttp.ClientSession() as session:
+        async def limited_request(token: str):
+            async with semaphore:
+                headers = {
+                    "Content-Type": "application/octet-stream",
+                    "Authorization": token
+                }
+                try:
+                    async with session.post(like_url, data=payload, headers=headers, timeout=10) as response:
+                        if response.status == 200:
+                            return await response.read()
+                except Exception as e:
+                    print(f"Error con token {token}: {e}")
+                return None
+
+        tasks = [limited_request(token) for token in tokens]
+        results = await asyncio.gather(*tasks)
 
     return {
         'sent': len(results),
