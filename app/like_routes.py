@@ -86,33 +86,23 @@ async def send_likes(uid: str, region: str, amount: int = None):
     used_tokens = set()
 
     if amount is None:
-        # Enviar a todos los tokens disponibles (una sola vez)
         tasks = [async_post_request(like_url, payload, token) for token in tokens]
         results = await asyncio.gather(*tasks)
         added = sum(1 for r in results if r)
         sent = len(results)
     else:
-        # Seleccionar solo los primeros `amount` tokens como objetivo
-        tokens_to_use = tokens[:amount]
-        token_index = 0
-        all_tokens_iter = iter(tokens)  # iterador para nuevos tokens si uno falla
+        for token in tokens:
+            if added >= amount:
+                break
+            if token in used_tokens:
+                continue
 
-        while added < amount and token_index < len(tokens_to_use):
-            token = tokens_to_use[token_index]
-            token_index += 1
             used_tokens.add(token)
-
             success = await async_post_request(like_url, payload, token)
             sent += 1
 
             if success:
                 added += 1
-            else:
-                # Reemplazamos token fallido con uno nuevo de la lista general que no se haya usado
-                for next_token in all_tokens_iter:
-                    if next_token not in used_tokens:
-                        tokens_to_use.append(next_token)
-                        break  # solo añadimos uno
 
     return {
         'sent': sent,
