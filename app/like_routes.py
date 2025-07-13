@@ -71,10 +71,10 @@ async def detect_player_region(uid: str, region: str = None):
             status_code = getattr(response, 'status', '???')
             raw_bytes = getattr(response, 'body', response)  # fallback si ya es bytes
 
-            logger.debug(f"✅ Respuesta recibida de {region.upper()} para UID {uid}")
-            logger.debug(f"📟 Código de respuesta: {status_code}")
-            logger.debug(f"🧱 Bytes recibidos: {len(raw_bytes)}")
-            logger.debug(f"🔍 Hex parcial (256): {raw_bytes[:256].hex()}")
+            logger.info(f"✅ Respuesta recibida de {region.upper()} para UID {uid}")
+            logger.info(f"📟 Código de respuesta: {status_code}")
+            logger.info(f"🧱 Bytes recibidos: {len(raw_bytes)}")
+            logger.info(f"🔍 Hex parcial (256): {raw_bytes[:256].hex()}")
 
             try:
                 player_info = decode_info(response)
