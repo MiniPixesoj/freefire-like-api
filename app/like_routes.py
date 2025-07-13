@@ -247,3 +247,26 @@ def get_first_token():
         "region": region.upper(),
         "token": tokens[0]
     })
+
+@like_bp.route("/get-tokens", methods=["GET"])
+def get_all_tokens():
+    region = request.args.get("region")
+    if not region:
+        return jsonify({
+            "status": 400,
+            "error": "Missing region parameter"
+        })
+
+    tokens = _token_cache.get_tokens(region.upper())
+    if not tokens:
+        return jsonify({
+            "status": 404,
+            "error": "No tokens available for the specified region"
+        })
+
+    return jsonify({
+        "status": 1,
+        "region": region.upper(),
+        "tokens": tokens,
+        "count": len(tokens)
+    })
