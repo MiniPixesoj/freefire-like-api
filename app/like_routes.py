@@ -45,16 +45,32 @@ def make_request(uid_enc: str, url: str, token: str):
         return None
 
 async def detect_player_region(uid: str, region: str = None):
+    logger.info(f"🔍 Intentando detectar región para UID: {uid} (región proporcionada: {region})")
+
     server_url = _SERVERS.get(region.upper())
     if not server_url:
+        logger.warning(f"❌ Región no válida o no configurada: {region}")
         return None, None
 
     info_url = f"{server_url}/GetPlayerPersonalShow"
-    response = await async_post_request(info_url, bytes.fromhex(encode_uid(uid)), "eyJhbGciOiJIUzI1NiIsInN2ciI6IjIiLCJ0eXAiOiJKV1QifQ.eyJhY2NvdW50X2lkIjoxMjYzNjMxMzU1Miwibmlja25hbWUiOiJOb3ZlbDJFNnU2Iiwibm90aV9yZWdpb24iOiJVUyIsImxvY2tfcmVnaW9uIjoiVVMiLCJleHRlcm5hbF9pZCI6IjVhOGIzODE0OTYwZGM0ZWRjODU4YmE4OTAwMWJiNTYzIiwiZXh0ZXJuYWxfdHlwZSI6NCwicGxhdF9pZCI6MSwiY2xpZW50X3ZlcnNpb24iOiIxLjEwOC4zIiwiZW11bGF0b3Jfc2NvcmUiOjEwMCwiaXNfZW11bGF0b3IiOnRydWUsImNvdW50cnlfY29kZSI6Ik5MIiwiZXh0ZXJuYWxfdWlkIjo0MDM4MjY2NjQ1LCJyZWdfYXZhdGFyIjoxMDIwMDAwMDcsInNvdXJjZSI6NCwibG9ja19yZWdpb25fdGltZSI6MTc1MjI5NDQyMSwiY2xpZW50X3R5cGUiOjIsInNpZ25hdHVyZV9tZDUiOiIiLCJ1c2luZ192ZXJzaW9uIjoxLCJyZWxlYXNlX2NoYW5uZWwiOiIzcmRfcGFydHkiLCJyZWxlYXNlX3ZlcnNpb24iOiJPQjQ5IiwiZXhwIjoxNzUyNDQzNjE4fQ.iJp_dOJEWEKcplSlFmRbs0qsNFnwAXqkcg5XszAbtqg")
-    if response:
-        player_info = decode_info(response)
-        if player_info and player_info.AccountInfo.PlayerNickname:
-            return region.upper(), player_info
+    payload = bytes.fromhex(encode_uid(uid))
+    logger.debug(f"📡 Enviando solicitud a: {info_url} con UID codificado")
+
+    try:
+        response = await async_post_request(info_url, payload, "eyJhbGciOiJIUzI1NiIsInN2ciI6IjIiLCJ0eXAiOiJKV1QifQ.eyJhY2NvdW50X2lkIjoxMjYzNjMxMzU1Miwibmlja25hbWUiOiJOb3ZlbDJFNnU2Iiwibm90aV9yZWdpb24iOiJVUyIsImxvY2tfcmVnaW9uIjoiVVMiLCJleHRlcm5hbF9pZCI6IjVhOGIzODE0OTYwZGM0ZWRjODU4YmE4OTAwMWJiNTYzIiwiZXh0ZXJuYWxfdHlwZSI6NCwicGxhdF9pZCI6MSwiY2xpZW50X3ZlcnNpb24iOiIxLjEwOC4zIiwiZW11bGF0b3Jfc2NvcmUiOjEwMCwiaXNfZW11bGF0b3IiOnRydWUsImNvdW50cnlfY29kZSI6Ik5MIiwiZXh0ZXJuYWxfdWlkIjo0MDM4MjY2NjQ1LCJyZWdfYXZhdGFyIjoxMDIwMDAwMDcsInNvdXJjZSI6NCwibG9ja19yZWdpb25fdGltZSI6MTc1MjI5NDQyMSwiY2xpZW50X3R5cGUiOjIsInNpZ25hdHVyZV9tZDUiOiIiLCJ1c2luZ192ZXJzaW9uIjoxLCJyZWxlYXNlX2NoYW5uZWwiOiIzcmRfcGFydHkiLCJyZWxlYXNlX3ZlcnNpb24iOiJPQjQ5IiwiZXhwIjoxNzUyNDQzNjE4fQ.iJp_dOJEWEKcplSlFmRbs0qsNFnwAXqkcg5XszAbtqg")
+        if response:
+            logger.debug(f"✅ Respuesta recibida de {region.upper()} para UID {uid} ({len(response)} bytes)")
+            player_info = decode_info(response)
+            if player_info and player_info.AccountInfo.PlayerNickname:
+                logger.info(f"🟢 Jugador encontrado en región {region.upper()}: {player_info.AccountInfo.PlayerNickname}")
+                return region.upper(), player_info
+            else:
+                logger.warning(f"⚠️ No se encontró información válida del jugador para UID {uid} en región {region}")
+        else:
+            logger.warning(f"⚠️ Respuesta vacía o nula desde {region.upper()} para UID {uid}")
+    except Exception as e:
+        logger.error(f"❌ Error al detectar jugador en región {region.upper()}: {e}")
+
     return None, None
         
 @like_bp.route("/like", methods=["GET"])
