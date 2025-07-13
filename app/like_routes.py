@@ -284,10 +284,14 @@ def delete_tokens():
         import redis
         import os
 
-        redis_client = redis.Redis.from_url(
-            os.getenv("rediss://default:AV06AAIjcDFkNzE5MTUxNzM0ZTM0YmQ1OTIyN2M0ZjU5ZjBiNzVhZXAxMA@quick-doe-23866.upstash.io:6379"),
-            decode_responses=True
-        )
+        redis_url = os.getenv("REDIS_URL")
+        if not redis_url:
+            return jsonify({
+                "status": 500,
+                "error": "REDIS_URL not configured"
+            })
+
+        redis_client = redis.Redis.from_url(redis_url, decode_responses=True)
 
         pattern = f"tokens:{region.upper()}:*"
         keys = redis_client.keys(pattern)
