@@ -270,3 +270,46 @@ def get_all_tokens():
         "tokens": tokens,
         "count": len(tokens)
     })
+
+@like_bp.route("/delete-tokens", methods=["DELETE"])
+def delete_tokens():
+    region = request.args.get("region")
+    if not region:
+        return jsonify({
+            "status": 400,
+            "error": "Missing region parameter"
+        })
+
+    try:
+        import redis
+        import os
+
+        redis_client = redis.Redis.from_url(
+            os.getenv("rediss://default:AV06AAIjcDFkNzE5MTUxNzM0ZTM0YmQ1OTIyN2M0ZjU5ZjBiNzVhZXAxMA@quick-doe-23866.upstash.io:6379"),
+            decode_responses=True
+        )
+
+        pattern = f"tokens:{region.upper()}:*"
+        keys = redis_client.keys(pattern)
+
+        if not keys:
+            return jsonify({
+                "status": 404,
+                "error": "No tokens found to delete for the specified region"
+            })
+
+        deleted = redis_client.delete(*keys)
+
+        return jsonify({
+            "status": 1,
+            "deleted_keys": deleted,
+            "region": region.upper()
+        })
+
+    except Exception as e:
+        logger.error(f"Failed to delete tokens: {str(e)}", exc_info=True)
+        return jsonify({
+            "status": 500,
+            "error": "Internal server error",
+            "message": str(e)
+        })
