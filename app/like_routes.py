@@ -48,28 +48,28 @@ async def detect_player_region(uid: str, region: str = None):
     logger.info(f"🔍 Intentando detectar región para UID: {uid} (región proporcionada: {region})")
 
     if not region:
-        logger.warning("⚠️ Región no especificada.")
+        logger.info("⚠️ Región no especificada.")
         return None, None
 
     server_url = _SERVERS.get(region.upper())
     if not server_url:
-        logger.warning(f"❌ Región no válida o no configurada: {region}")
+        logger.info(f"❌ Región no válida o no configurada: {region}")
         return None, None
 
     info_url = f"{server_url}/GetPlayerPersonalShow"
     payload = bytes.fromhex(encode_uid(uid))
     auth_token = "eyJhbGciOiJIUzI1NiIsInN2ciI6IjIiLCJ0eXAiOiJKV1QifQ.eyJhY2NvdW50X2lkIjoxMjYzNjMxMzU1Miwibmlja25hbWUiOiJOb3ZlbDJFNnU2Iiwibm90aV9yZWdpb24iOiJVUyIsImxvY2tfcmVnaW9uIjoiVVMiLCJleHRlcm5hbF9pZCI6IjVhOGIzODE0OTYwZGM0ZWRjODU4YmE4OTAwMWJiNTYzIiwiZXh0ZXJuYWxfdHlwZSI6NCwicGxhdF9pZCI6MSwiY2xpZW50X3ZlcnNpb24iOiIxLjEwOC4zIiwiZW11bGF0b3Jfc2NvcmUiOjEwMCwiaXNfZW11bGF0b3IiOnRydWUsImNvdW50cnlfY29kZSI6Ik5MIiwiZXh0ZXJuYWxfdWlkIjo0MDM4MjY2NjQ1LCJyZWdfYXZhdGFyIjoxMDIwMDAwMDcsInNvdXJjZSI6NCwibG9ja19yZWdpb25fdGltZSI6MTc1MjI5NDQyMSwiY2xpZW50X3R5cGUiOjIsInNpZ25hdHVyZV9tZDUiOiIiLCJ1c2luZ192ZXJzaW9uIjoxLCJyZWxlYXNlX2NoYW5uZWwiOiIzcmRfcGFydHkiLCJyZWxlYXNlX3ZlcnNpb24iOiJPQjQ5IiwiZXhwIjoxNzUyNDQzNjE4fQ.iJp_dOJEWEKcplSlFmRbs0qsNFnwAXqkcg5XszAbtqg"
 
-    logger.debug(f"🌐 URL: {info_url}")
-    logger.debug(f"🧾 Payload HEX: {payload.hex()}")
-    logger.debug(f"🔑 Token: {auth_token[:50]}...")
+    logger.info(f"🌐 URL: {info_url}")
+    logger.info(f"🧾 Payload HEX: {payload.hex()}")
+    logger.info(f"🔑 Token: {auth_token[:50]}...")
 
     try:
         response = await async_post_request(info_url, payload, auth_token)
 
         if response:
-            logger.debug(f"✅ Respuesta recibida ({len(response)} bytes) de {region.upper()} para UID {uid}")
-            logger.debug(f"🧱 Respuesta cruda (hex, primeros 256 bytes): {response[:256].hex()}")
+            logger.info(f"✅ Respuesta recibida ({len(response)} bytes) de {region.upper()} para UID {uid}")
+            logger.info(f"🧱 Respuesta cruda (hex, primeros 256 bytes): {response[:256].hex()}")
 
             try:
                 player_info = decode_info(response)
@@ -77,13 +77,13 @@ async def detect_player_region(uid: str, region: str = None):
                     logger.info(f"🟢 Jugador encontrado en región {region.upper()}: {player_info.AccountInfo.PlayerNickname}")
                     return region.upper(), player_info
                 else:
-                    logger.warning(f"⚠️ No se encontró información válida del jugador para UID {uid} en región {region}")
+                    logger.info(f"⚠️ No se encontró información válida del jugador para UID {uid} en región {region}")
             except Exception as decode_error:
-                logger.error(f"❌ Error al decodificar Protobuf: {decode_error}")
+                logger.info(f"❌ Error al decodificar Protobuf: {decode_error}")
         else:
-            logger.warning(f"⚠️ Respuesta vacía o nula desde {region.upper()} para UID {uid}")
+            logger.info(f"⚠️ Respuesta vacía o nula desde {region.upper()} para UID {uid}")
     except Exception as e:
-        logger.exception(f"❌ Excepción al hacer solicitud para UID {uid} en región {region.upper()}: {e}")
+        logger.info(f"❌ Excepción al hacer solicitud para UID {uid} en región {region.upper()}: {e}")
 
     return None, None
         
