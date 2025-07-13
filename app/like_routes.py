@@ -271,7 +271,7 @@ def get_all_tokens():
         "count": len(tokens)
     })
 
-@like_bp.route("/delete-tokens", methods=["DELETE"])
+@like_bp.route("/delete-tokens", methods=["GET"])
 def delete_tokens():
     region = request.args.get("region")
     if not region:
@@ -295,19 +295,20 @@ def delete_tokens():
         if not keys:
             return jsonify({
                 "status": 404,
-                "error": "No tokens found to delete for the specified region"
+                "error": "No tokens found for region",
+                "region": region.upper()
             })
 
-        deleted = redis_client.delete(*keys)
+        deleted_count = redis_client.delete(*keys)
 
         return jsonify({
             "status": 1,
-            "deleted_keys": deleted,
-            "region": region.upper()
+            "region": region.upper(),
+            "deleted_keys": deleted_count
         })
 
     except Exception as e:
-        logger.error(f"Failed to delete tokens: {str(e)}", exc_info=True)
+        logger.error(f"Error deleting tokens for {region}: {str(e)}", exc_info=True)
         return jsonify({
             "status": 500,
             "error": "Internal server error",
