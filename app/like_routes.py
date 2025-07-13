@@ -284,7 +284,7 @@ def delete_tokens():
         import redis
         import os
 
-        redis_url = os.getenv("REDIS_URL")
+        redis_url = os.getenv("rediss://default:AV06AAIjcDFkNzE5MTUxNzM0ZTM0YmQ1OTIyN2M0ZjU5ZjBiNzVhZXAxMA@quick-doe-23866.upstash.io:6379")
         if not redis_url:
             return jsonify({
                 "status": 500,
