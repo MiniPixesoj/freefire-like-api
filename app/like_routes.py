@@ -45,35 +45,17 @@ def make_request(uid_enc: str, url: str, token: str):
         return None
 
 async def detect_player_region(uid: str, region: str = None):
-    if region:
-        server_url = _SERVERS.get(region.upper())
-        if not server_url:
-            return None, None
-
-        tokens = _token_cache.get_tokens(region.upper())
-        if not tokens:
-            return None, None
-
-        info_url = f"{server_url}/GetPlayerPersonalShow"
-        response = await async_post_request(info_url, bytes.fromhex(encode_uid(uid)), tokens[0])
-        if response:
-            player_info = decode_info(response)
-            if player_info and player_info.AccountInfo.PlayerNickname:
-                return region.upper(), player_info
+    server_url = _SERVERS.get(region.upper())
+    if not server_url:
         return None, None
-    else:
-        for region_key, server_url in _SERVERS.items():
-            tokens = _token_cache.get_tokens(region_key)
-            if not tokens:
-                continue
 
-            info_url = f"{server_url}/GetPlayerPersonalShow"
-            response = await async_post_request(info_url, bytes.fromhex(encode_uid(uid)), tokens[0])
-            if response:
-                player_info = decode_info(response)
-                if player_info and player_info.AccountInfo.PlayerNickname:
-                    return region_key, player_info
-        return None, None
+    info_url = f"{server_url}/GetPlayerPersonalShow"
+    response = await async_post_request(info_url, bytes.fromhex(encode_uid(uid)), "eyJhbGciOiJIUzI1NiIsInN2ciI6IjIiLCJ0eXAiOiJKV1QifQ.eyJhY2NvdW50X2lkIjoxMjYzNjMxMzU1Miwibmlja25hbWUiOiJOb3ZlbDJFNnU2Iiwibm90aV9yZWdpb24iOiJVUyIsImxvY2tfcmVnaW9uIjoiVVMiLCJleHRlcm5hbF9pZCI6IjVhOGIzODE0OTYwZGM0ZWRjODU4YmE4OTAwMWJiNTYzIiwiZXh0ZXJuYWxfdHlwZSI6NCwicGxhdF9pZCI6MSwiY2xpZW50X3ZlcnNpb24iOiIxLjEwOC4zIiwiZW11bGF0b3Jfc2NvcmUiOjEwMCwiaXNfZW11bGF0b3IiOnRydWUsImNvdW50cnlfY29kZSI6Ik5MIiwiZXh0ZXJuYWxfdWlkIjo0MDM4MjY2NjQ1LCJyZWdfYXZhdGFyIjoxMDIwMDAwMDcsInNvdXJjZSI6NCwibG9ja19yZWdpb25fdGltZSI6MTc1MjI5NDQyMSwiY2xpZW50X3R5cGUiOjIsInNpZ25hdHVyZV9tZDUiOiIiLCJ1c2luZ192ZXJzaW9uIjoxLCJyZWxlYXNlX2NoYW5uZWwiOiIzcmRfcGFydHkiLCJyZWxlYXNlX3ZlcnNpb24iOiJPQjQ5IiwiZXhwIjoxNzUyNDQzNjE4fQ.iJp_dOJEWEKcplSlFmRbs0qsNFnwAXqkcg5XszAbtqg")
+    if response:
+        player_info = decode_info(response)
+        if player_info and player_info.AccountInfo.PlayerNickname:
+            return region.upper(), player_info
+    return None, None
         
 async def send_likes(uid: str, region: str, amount: int = None):
     tokens = _token_cache.get_tokens(region)
@@ -163,15 +145,10 @@ async def like_player():
         player_name = player_info.AccountInfo.PlayerNickname
         info_url = f"{_SERVERS[region]}/GetPlayerPersonalShow" 
 
-        await send_likes(uid, region, target_likes)
+        #await send_likes(uid, region, target_likes)
 
-        current_tokens = _token_cache.get_tokens(region) 
-        if not current_tokens:
-            logger.error(f"No tokens available for {region} to verify likes after sending.")
-            after_likes = before_likes
-        else:
-            new_info = make_request(encode_uid(uid), info_url, current_tokens[0])
-            after_likes = new_info.AccountInfo.Likes if new_info else before_likes
+        new_info = make_request(encode_uid(uid), info_url, current_tokens[0])
+        after_likes = new_info.AccountInfo.Likes if new_info else before_likes
 
         return jsonify({
             "status": 1 if after_likes > before_likes else 2,
