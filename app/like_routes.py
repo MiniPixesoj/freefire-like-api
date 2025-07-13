@@ -68,8 +68,13 @@ async def detect_player_region(uid: str, region: str = None):
         response = await async_post_request(info_url, payload, auth_token)
 
         if response:
-            logger.info(f"✅ Respuesta recibida ({len(response)} bytes) de {region.upper()} para UID {uid}")
-            logger.info(f"🧱 Respuesta cruda (hex, primeros 256 bytes): {response[:256].hex()}")
+            status_code = getattr(response, 'status', '???')
+            raw_bytes = getattr(response, 'body', response)  # fallback si ya es bytes
+
+            logger.debug(f"✅ Respuesta recibida de {region.upper()} para UID {uid}")
+            logger.debug(f"📟 Código de respuesta: {status_code}")
+            logger.debug(f"🧱 Bytes recibidos: {len(raw_bytes)}")
+            logger.debug(f"🔍 Hex parcial (256): {raw_bytes[:256].hex()}")
 
             try:
                 player_info = decode_info(response)
