@@ -60,6 +60,40 @@ class TokenCache:
             valid_tokens = [token for token in results if token]
             return valid_tokens
 
+        def get_one_token(self, server_key):
+            with self.lock:
+                now = time.time()
+                creds = self._load_credentials(server_key)
+                if not creds:
+                    logger.warning(f"No credentials found for server: {server_key}")
+                    return None
+
+                for user in creds:
+                    uid = user["uid"]
+                    redis_key = f"tokens:{server_key}:{uid}"
+                    entry = redis_client.get(redis_key)
+
+                    if entry:
+                        try:
+                            data = json.loads(entry)
+                            if now - data.get("timestamp", 0) < CACHE_DURATION:
+                                logger.info(f"🔁 Token válido en cache para UID {uid}")
+                                return data["token"]
+                        except Exception:
+                            logger.warning(f"Error leyendo cache para UID {uid}")
+
+                    # Token vencido o inexistente, se solicita uno nuevo
+                    token = self._get_new_token(user)
+                    if token:
+                        redis_client.set(redis_key, json.dumps({
+                            "token": token,
+                            "timestamp": now
+                        }))
+                        return token
+
+                logger.warning(f"No se pudo obtener token válido para región {server_key}")
+                return None
+
     def _get_new_token(self, user):
         for attempt in range(3):
             try:
