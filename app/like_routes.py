@@ -57,68 +57,6 @@ async def detect_player_region(uid: str, region: str = None):
             return region.upper(), player_info
     return None, None
         
-async def send_likes(uid: str, region: str, amount: int = None):
-    tokens = _token_cache.get_tokens(region)
-    like_url = f"{_SERVERS[region]}/LikeProfile"
-    encrypted = encrypt_aes(create_protobuf(uid, region))
-    payload = bytes.fromhex(encrypted)
-
-    added = 0
-    sent = 0
-    used_tokens = set()
-
-    initial_info = make_request(encode_uid(uid), _SERVERS[region] + "/GetPlayerPersonalShow", tokens[0])
-    before_likes = initial_info.AccountInfo.Likes
-
-    if amount is None:
-        logger.info("[INFO] Modo sin límite de likes, usando todos los tokens.")
-        tasks = [async_post_request(like_url, payload, token) for token in tokens]
-        results = await asyncio.gather(*tasks)
-        sent = len(results)
-
-        final_info = make_request(encode_uid(uid), _SERVERS[region] + "/GetPlayerPersonalShow", tokens[0])
-        added = final_info.AccountInfo.Likes - before_likes
-    else:
-        logger.info(f"[INFO] Modo limitado: intentando agregar {amount} likes...")
-
-        for token in tokens:
-            if added >= amount:
-                break
-            if token in used_tokens:
-                continue
-
-            used_tokens.add(token)
-            logger.info(f"[TRY] Enviando like con token: {token[:20]}...")
-
-            try:
-                await async_post_request(like_url, payload, token)
-                sent += 1
-
-                current_tokens = _token_cache.get_tokens(region)
-                if not current_tokens:
-                    logger.error(f"No tokens disponibles para verificar likes en {region}.")
-                    continue
-
-                new_info = make_request(encode_uid(uid), _SERVERS[region] + "/GetPlayerPersonalShow", current_tokens[0])
-                after_likes = new_info.AccountInfo.Likes
-
-                if after_likes > before_likes:
-                    added += 1
-                    before_likes = after_likes
-                    logger.info(f"[OK] Like agregado. Total: {added}/{amount}")
-                else:
-                    logger.info(f"[FAIL] No se incrementaron los likes. Total: {added}/{amount}")
-            except Exception as e:
-                logger.warning(f"[ERROR] Falló intento de like: {e}")
-
-        if added < amount:
-            logger.info(f"[WARN] Solo se pudieron agregar {added} likes de {amount} con los tokens disponibles.")
-
-    logger.info(f"[DONE] Likes enviados: {sent}, Likes agregados: {added}")
-    return {
-        'sent': sent,
-        'added': added
-    }
 @like_bp.route("/like", methods=["GET"])
 async def like_player():
     try:
@@ -138,7 +76,8 @@ async def like_player():
             return jsonify({
                 "status": 404,
                 "error": "Player not found",
-                "message": "Player not found on any server"
+                "message": "Player not found on any server",
+                "test": player_info
             })
 
         before_likes = player_info.AccountInfo.Likes
